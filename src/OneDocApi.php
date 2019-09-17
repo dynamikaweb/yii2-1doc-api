@@ -6,12 +6,6 @@
  */
 namespace dynamikaweb\api;
 
-use yii\helpers\Html;
-use yii\helpers\Json;
-use yii\helpers\ArrayHelper;
-use yii\base\Model;
-use yii\base\Exception;
-
 use Yii;
 
 /**
@@ -22,7 +16,7 @@ use Yii;
  * @version 0.1  (17/09/2019)
  * 
  */
-class OneDocApi extends Model
+class OneDocApi extends \yii\base\Model
 {   
     const XXX = 'XXXXXXXXXX';
     const URLS = [
@@ -40,23 +34,6 @@ class OneDocApi extends Model
     private $url_request;
     public $data = [];
 
-
-    /**
-     * __construct
-     *
-     * @param  mixed $config
-     *
-     * @return void
-     */
-    public function  __construct ( $config = [] )
-    {
-        self::connectTo1Doc( $config );
-        $this->url_request = self::configUrl( $config );
-        
-        parent::__construct( $config );
-    }
-
-
     /**
      * init
      * 
@@ -64,29 +41,47 @@ class OneDocApi extends Model
      */
     public function init ( )
     {
-
+        // Verifica se existe parametros de autenticação
+        $auth = Yii::$app->session->get('1doc-auth', []);
+        foreach ( ['client_auth', 'token', 'secret'] as $attribute){
+            if(!array_key_exists($attribute, $auth)){
+                throw new OneDocException("Autenticação Incompleta!\nNão foi encontrado: [{$attribute}]");
+            }
+        }
+        // Define uma URL padrão para quando não foi escolhida
+        if ( !$this->url_request ) {
+            $url = self::URLS;
+            $this->url_request = current($url);
+        }
+    
     }
 
-
-
     /**
-     * getRequisicao
+     * getRequest
      *
      * @param  boolean $real Paremtros de autenticação são reais ( por padrão falso para esconder a informação )
      *
      * @return string-json a requisão que sera feita para api 1doc
      */
-    public function getRequisicao( $real = false )
+    public function getRequest( $real = false )
     {
         $json = $this->instructs;
 
         if( $real ){
-            $json = ArrayHelper::merge( $json, self::getConnection1Doc( ) ); 
+            $json = \yii\helpers\ArrayHelper::merge( $json, self::getConnection1Doc( ) ); 
         }
 
-        return Json::encode( $json, false );
+        return \yii\helpers\Json::encode( $json, false );
     }
 
+
+    /**
+     * 
+     */
+    public function getSubmitRequest ( )
+    {
+
+    }
 
     /**
      * getConnection1Doc
@@ -97,49 +92,34 @@ class OneDocApi extends Model
      */
     public static function getConnection1Doc ( ) 
     {
-        return Yii::$app->session->get('1doc', self::getConnectionFake());
+        return Yii::$app->session->get('1doc-auth', []);
     }
 
     /**
-     * static
+     * __set
      *
-     * @param  mixed $config
-     *
-     * @return void
+     * @param string $name
+     * @param mixed $value
+     * 
      */
-    private static function connectTo1Doc( $config )
+    public function __set( $name, $value )
     {
-        if ( Yii::$app->session->has('1doc') ){
+        switch ($name)
+        {
+            case 'client_auth': 
+            case 'token': 
+            case 'secret':
+                Yii::$app->session->set('1doc-auth', \yii\helpers\ArrayHelper::merge(
+                    Yii::$app->session->get('1doc-auth', []),
+                    [$name => $value]
+                ));
+            return ;
+            case 'url': 
+                $urls = self::URLS;
+                $this->url_request = !isset($urls[$value]) ? $value:$urls[$value];
             return ;
         }
-
-        $attributes = ['client_auth', 'token', 'secret'];
-
-        foreach ( $attributes as $attribute ){
-            // verificar se a autenticação tem todos os dados.
-            if ( !isset( $config[$attribute]) ){
-                throw new Exception("1Doc - Api Error - Não foi possivel fazer a autenticação! [{$attribute}] não foi encontrado.", 1);
-            }
-            // gravar em sessão
-            Yii::$app->session->set('1doc', [
-                $attribute => $config[$attribute]
-            ]);
-        }
-        return ;
-    }
-
-    public static function configUrl( $config )
-    {
-        $urls = self::URLS;
-
-        if ( !isset($config['url']) ){
-            return current( $urls );
-        }
-
-        if ( isset($urls[$config['url']]) ){
-            return $urls[$config['url']];
-        }
-
-        return $config['url'];
+        
+        parent::__set( $name, $value );
     }
 }

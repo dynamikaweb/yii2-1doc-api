@@ -7,7 +7,7 @@
         "yii",
         "yii2",
         "yii 2",
-        "extension",,
+        "extension",
         "one doc",
         "1doc" 
     ],
@@ -24,10 +24,11 @@
         "source": "http://github.com/dynamikaweb/yii2-1doc-api"
     },
     "require": {
-        "php": ">=5.5.0"
+        "php": ">=5.5.0",
+        "yiisoft/yii2": "*"
     },
     "minimum-stability": "dev",
-    "prefer-stable": true,
+    "prefer-stable": false,
     "autoload": {
         "psr-4": {
             "dynamikaweb\\api\\": "src"
