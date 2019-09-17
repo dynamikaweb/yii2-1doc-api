@@ -1,3 +1,5 @@
+# simple tests
+run
 # composer package patch
 vendor/
 composer.lock
