@@ -1,8 +1,10 @@
 <?php
 /**
+ * 
  * @copyright Copyright (c) 2019 Dynamika Web
  * @link https://github.com/dynamikaweb/yii2-1doc-api
  * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
+ * 
  */
 namespace dynamikaweb\api;
 
@@ -10,50 +12,178 @@ use Yii;
 
 /**
  *
- * 
- *
+ * @api 1Doc
  * @author Rodrigo Dornelles <rodrigo@dornelles.me> <rodrigo@dynamika.com.br>
- * @version 0.1  (17/09/2019)
+ * @version 0.1a  (18/09/2019)
+ *
+ * *
+ *
+ * @see todos os comentarios estão em português por que o uso desta @api está focado no mercado nacional.
+ * 
+ * *
  * 
  */
 class OneDocApi extends \yii\base\Model
 {   
+    /**
+     * @property XXX
+     * @return string
+     * 
+     * destinado a ocultação de informações sensiveis 
+     * 
+     */
     const XXX = 'XXXXXXXXXX';
+    
+    /**
+     * @property URLS
+     * @return array
+     * 
+     * urls padrões pré estabelecidas
+     * 
+     */
     const URLS = [
-        'prod' => 'api.1doc.com.br',
-        'testes' => 'app7.1doc.com.br/api/v2/'
+        'prod' => 'https://api.1doc.com.br',
+        'testes' => 'https://app7.1doc.com.br/api/v2/'
     ];
 
+    /**
+     * @property instructs 
+     * @return array
+     * 
+     * requisição que sera feita pela @api
+     *  
+     */
     public $instructs = [
-        'method' => self::XXX,
+        'method' => '',
 	    'client_auth' => self::XXX,
 	    'token' => self::XXX,
         'secret' => self::XXX,
     ];
 
+    /**
+     * @property rules
+     * @return array-array
+     * 
+     * regras de monstagem da @property instruct 
+     * 
+     */
+    public $rules = [
+        'emissao' => [
+            'hash' => 'hash',
+            'grupo' => 'grupo',
+            'documento' => 'id_documento',
+            'disponivel' => 'disponivel_workplace',
+            'origem' => 'origem_id_pessoa',
+            'destino' => 'destino_id_pessoa',
+            'cidade' => 'cidade'
+        ],
+        'pagina' => 'num_pagina',
+        'limit' => 'limit'
+    ];
+
+    /**
+     * @property url_request
+     * @return string
+     * 
+     * url para requisição restfull @api
+     * 
+     */
     private $url_request;
+
+    /**
+     * @property data
+     * @return array
+     * 
+     * dados retornados pela @api da 1doc
+     * 
+     */
     public $data = [];
+
+
+    /**
+     * __construct 
+     * 
+     * quando component for montado, já deve ser criado component auxiliar para autenticação segura
+     * 
+     * @return void
+     */
+    public function __construct( $config = [] )
+    {
+        /** 
+         * @see componet dynamikaweb\OneDocAuth
+         */
+        Yii::$app->set( 'OneDocAuth', new OneDocAuth );
+        parent::__construct( $config );
+    }
 
     /**
      * init
      * 
+     * quando componet for chamado pela primeira vez
+     * 
      * @return void
      */
     public function init ( )
-    {
-        // Verifica se existe parametros de autenticação
-        $auth = Yii::$app->session->get('1doc-auth', []);
-        foreach ( ['client_auth', 'token', 'secret'] as $attribute){
-            if(!array_key_exists($attribute, $auth)){
-                throw new OneDocException("Autenticação Incompleta!\nNão foi encontrado: [{$attribute}]");
-            }
-        }
+    {        
         // Define uma URL padrão para quando não foi escolhida
         if ( !$this->url_request ) {
             $url = self::URLS;
             $this->url_request = current($url);
+        }      
+    }
+
+
+    /**
+     * find 
+     * 
+     * montagem da estrutura de request de acordo com @property rules
+     *
+     * @param  array $options
+     *
+     * @return array $this->instructs
+     */
+    public function find( $options )
+    {
+        foreach ($options as $option => $value){
+            // se o parametro for o metodo, colocar prefixo emission
+            if($option == 'method'){
+                $this->instructs['method'] = 'emission'.ucfirst($value);
+                continue; 
+            }
+            // parametros que estão em emissão
+            if( isset($this->rules['emissao'][$option]) ){
+                $this->instructs['emissao'][$this->rules['emissao'][$option]] = $value;
+                continue;
+            }
+            // parametros aceitos fora de emissão
+            if( isset($this->rules[$option]) ){
+                $this->instructs[$this->rules[$option]] = $value;
+                continue;
+            }
         }
-    
+        return $this->instructs;
+    }
+
+
+    /**
+     * getRun
+     * 
+     * executa a requisição para @api 1DOC
+     *
+     * @return array-object
+     */
+    public function getRun()
+    {
+        $ch= curl_init();
+        curl_setopt($ch, CURLOPT_URL, $this->url_request);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, "data=". base64_encode($this->getRequest(true)));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/x-www-form-urlencoded'));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $this->data = json_decode(curl_exec ($ch));
+        curl_close($ch);
+        return $this;
     }
 
     /**
@@ -67,32 +197,13 @@ class OneDocApi extends \yii\base\Model
     {
         $json = $this->instructs;
 
+        // se for uma requisição real, substiuir autenticação ficticia pela verdadeira
         if( $real ){
-            $json = \yii\helpers\ArrayHelper::merge( $json, self::getConnection1Doc( ) ); 
+            $auth = Yii::$app->OneDocAuth; // objeto de autenticação
+            $json = \yii\helpers\ArrayHelper::merge( $json, $auth() ); 
         }
-
+        
         return \yii\helpers\Json::encode( $json, false );
-    }
-
-
-    /**
-     * 
-     */
-    public function getSubmitRequest ( )
-    {
-
-    }
-
-    /**
-     * getConnection1Doc
-     * 
-     * retorna os dados de autenticação armazenados em sessão.
-     *
-     * @return array [client_auth, token, secret]
-     */
-    public static function getConnection1Doc ( ) 
-    {
-        return Yii::$app->session->get('1doc-auth', []);
     }
 
     /**
@@ -106,13 +217,8 @@ class OneDocApi extends \yii\base\Model
     {
         switch ($name)
         {
-            case 'client_auth': 
-            case 'token': 
-            case 'secret':
-                Yii::$app->session->set('1doc-auth', \yii\helpers\ArrayHelper::merge(
-                    Yii::$app->session->get('1doc-auth', []),
-                    [$name => $value]
-                ));
+            case 'client_auth': case 'token': case 'secret':
+                Yii::$app->OneDocAuth->$name = $value;
             return ;
             case 'url': 
                 $urls = self::URLS;
